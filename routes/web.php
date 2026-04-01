@@ -5,7 +5,10 @@ use App\Models\Product;
 use App\Models\InventoryMovement;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\SalesWeekdayGoal;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Route;
@@ -22,6 +25,18 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::middleware(RequireFilamentLogin::class)->get('/', function () {
+    $ventasDateParam = request('ventas_date');
+    $ventasDate = null;
+
+    if ($ventasDateParam) {
+        try {
+            $parsed = Carbon::parse($ventasDateParam)->startOfDay();
+            $ventasDate = $parsed->toDateString();
+        } catch (\Exception $e) {
+            $ventasDate = null;
+        }
+    }
+
     $productos = Product::query()
         ->select(['id', 'name', 'price', 'stock', 'image'])
         ->orderBy('name')
@@ -30,22 +45,43 @@ Route::middleware(RequireFilamentLogin::class)->get('/', function () {
 
     $catalogo = Product::query()
         ->select(['id', 'name', 'price', 'stock', 'image'])
+        ->where('stock', '>', 0)
         ->orderBy('name')
         ->get();
-    $ventas = Sale::query()
+
+    $ventasQuery = Sale::query()
         ->orderByDesc('created_at')
         ->orderByDesc('id')
-        ->with('items.product')
-        ->take(25)
+        ->with('items.product');
+
+    if ($ventasDate) {
+        $ventasQuery->whereDate('created_at', $ventasDate);
+    }
+
+    $ventas = $ventasQuery
+        ->take(100)
         ->get();
 
-    $productAgg = Product::query()
-        ->selectRaw('COUNT(*) as total_productos, COALESCE(SUM(stock), 0) as stock_total')
-        ->first();
+    $productAgg = Cache::remember('dashboard.productAgg', 30, function () {
+        return Product::query()
+            ->selectRaw('COUNT(*) as total_productos, COALESCE(SUM(stock), 0) as stock_total')
+            ->first();
+    });
 
-    $salesAgg = Sale::query()
-        ->selectRaw('COUNT(*) as total_facturas, COALESCE(SUM(total), 0) as ingresos_totales')
-        ->first();
+    $salesAgg = Cache::remember('dashboard.salesAgg', 30, function () {
+        return Sale::query()
+            ->selectRaw('COUNT(*) as total_facturas, COALESCE(SUM(total), 0) as ingresos_totales')
+            ->first();
+    });
+
+    $ventasPorMetodo = Cache::remember('dashboard.ventasPorMetodo', 30, function () {
+        return Sale::query()
+            ->selectRaw('payment_method, COUNT(*) as total_facturas, COALESCE(SUM(total), 0) as ingresos_totales')
+            ->groupBy('payment_method')
+            ->get();
+    });
+
+    $weekdayGoals = SalesWeekdayGoal::query()->get()->keyBy('weekday');
 
     $kpis = [
         'total_productos' => (int) ($productAgg->total_productos ?? 0),
@@ -54,6 +90,37 @@ Route::middleware(RequireFilamentLogin::class)->get('/', function () {
         'ingresos_totales' => (int) ($salesAgg->ingresos_totales ?? 0),
     ];
 
+    $ventasGoalDia = (int) env('SALES_DAILY_GOAL', 500000);
+
+    $ventasDiaAgg = null;
+
+    if ($ventasDate) {
+        $ventasDiaRows = Sale::query()
+            ->selectRaw('payment_method, COUNT(*) as total_facturas, COALESCE(SUM(total), 0) as ingresos_totales')
+            ->whereDate('created_at', $ventasDate)
+            ->groupBy('payment_method')
+            ->get();
+
+        $totalDia = (int) $ventasDiaRows->sum('ingresos_totales');
+        $totalDiaFacturas = (int) $ventasDiaRows->sum('total_facturas');
+
+        $rowNequi = $ventasDiaRows->firstWhere('payment_method', 'nequi');
+        $rowEfectivo = $ventasDiaRows->firstWhere('payment_method', 'efectivo');
+
+        $ventasDiaAgg = [
+            'date' => $ventasDate,
+            'total_facturas' => $totalDiaFacturas,
+            'total' => $totalDia,
+            'nequi' => (int) ($rowNequi->ingresos_totales ?? 0),
+            'efectivo' => (int) ($rowEfectivo->ingresos_totales ?? 0),
+        ];
+    }
+
+    $dateForGoal = $ventasDate ? Carbon::parse($ventasDate) : now();
+    $weekdayIso = (int) $dateForGoal->dayOfWeekIso; // 1 = lunes ... 7 = domingo
+    $weekdayGoalRow = $weekdayGoals->get($weekdayIso);
+    $ventasGoalDia = (int) ($weekdayGoalRow->amount ?? env('SALES_DAILY_GOAL', 0));
+
     $ultimosVendidos = SaleItem::query()
         ->latest()
         ->with(['product', 'sale'])
@@ -61,8 +128,7 @@ Route::middleware(RequireFilamentLogin::class)->get('/', function () {
         ->get();
 
     $ultimasFacturas = Sale::query()
-        ->orderByDesc('created_at')
-        ->orderByDesc('id')
+        ->latest()
         ->take(6)
         ->get();
 
@@ -79,20 +145,24 @@ Route::middleware(RequireFilamentLogin::class)->get('/', function () {
         ->take(40)
         ->get();
 
-    $topVendidos = SaleItem::query()
-        ->selectRaw('product_id, SUM(quantity) as total_qty, SUM(line_total) as total_amount')
-        ->with('product')
-        ->groupBy('product_id')
-        ->orderByDesc('total_qty')
-        ->take(5)
-        ->get();
+    $topVendidos = Cache::remember('dashboard.topVendidos', 30, function () {
+        return SaleItem::query()
+            ->selectRaw('product_id, SUM(quantity) as total_qty, SUM(line_total) as total_amount')
+            ->with('product')
+            ->groupBy('product_id')
+            ->orderByDesc('total_qty')
+            ->take(20)
+            ->get();
+    });
 
-    $ventasDiarias = Sale::query()
-        ->selectRaw('DATE(created_at) as dia, SUM(total) as total')
-        ->groupBy('dia')
-        ->orderByDesc('dia')
-        ->take(60)
-        ->get();
+    $ventasDiarias = Cache::remember('dashboard.ventasDiarias', 30, function () {
+        return Sale::query()
+            ->selectRaw('DATE(created_at) as dia, SUM(total) as total')
+            ->groupBy('dia')
+            ->orderByDesc('dia')
+            ->take(60)
+            ->get();
+    });
 
     $ventasDiariasJson = $ventasDiarias
         ->map(fn ($row) => [
@@ -106,6 +176,11 @@ Route::middleware(RequireFilamentLogin::class)->get('/', function () {
         'catalogo' => $catalogo,
         'ventas' => $ventas,
         'kpis' => $kpis,
+        'ventasDate' => $ventasDate,
+        'ventasDiaAgg' => $ventasDiaAgg,
+        'ventasGoalDia' => $ventasGoalDia,
+        'weekdayGoals' => $weekdayGoals,
+        'ventasPorMetodo' => $ventasPorMetodo,
         'ultimosVendidos' => $ultimosVendidos,
         'ultimasFacturas' => $ultimasFacturas,
         'bajoStock' => $bajoStock,
@@ -174,6 +249,26 @@ Route::middleware(RequireFilamentLogin::class)->post('/sales', function (Request
     }
 
     return redirect('/#ventas')->with('sale_success', 'Venta creada satisfactoriamente.');
+});
+
+Route::middleware(RequireFilamentLogin::class)->post('/admin/sales-goals', function (Request $request) {
+    $data = $request->validate([
+        'goals' => ['required', 'array'],
+        'goals.*' => ['nullable', 'integer', 'min:0'],
+    ]);
+
+    $goals = $data['goals'] ?? [];
+
+    for ($weekday = 1; $weekday <= 7; $weekday++) {
+        $amount = isset($goals[$weekday]) ? (int) $goals[$weekday] : 0;
+
+        SalesWeekdayGoal::updateOrCreate(
+            ['weekday' => $weekday],
+            ['amount' => $amount]
+        );
+    }
+
+    return redirect('/#admin')->with('sale_success', 'Metas de ventas actualizadas.');
 });
 
 Route::middleware(RequireFilamentLogin::class)->post('/inventory/add-stock', function (Request $request) {

@@ -77,7 +77,7 @@
         }
 
         .wrap {
-            max-width: 1200px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 0 18px;
         }
@@ -604,6 +604,116 @@
             background: #fff;
         }
 
+        .sales-summary-grid {
+            margin: 6px;
+            margin-top: 0;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .sales-summary-card {
+            position: relative;
+            border-radius: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.06), transparent 55%), #ffffff;
+            padding: 12px 14px 13px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            box-shadow: 0 10px 18px rgba(15, 23, 42, 0.06);
+            transition: transform 0.12s ease-out, box-shadow 0.12s ease-out, border-color 0.12s ease-out;
+        }
+
+        .sales-summary-card::before {
+            content: "";
+            position: absolute;
+            inset-inline-start: 10px;
+            top: 12px;
+            width: 4px;
+            height: 18px;
+            border-radius: 999px;
+            background: linear-gradient(180deg, #4f46e5, #6366f1);
+            opacity: 0.4;
+        }
+
+        .sales-summary-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 16px 28px rgba(15, 23, 42, 0.11);
+            border-color: rgba(37, 99, 235, 0.35);
+        }
+
+        .sales-summary-label {
+            font-size: 13px;
+            font-weight: 900;
+            color: #0f172a;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            padding-inline-start: 14px;
+        }
+
+        .sales-summary-value {
+            font-size: 18px;
+            font-weight: 900;
+        }
+
+        .sales-summary-sub {
+            font-size: 11px;
+            font-weight: 800;
+            color: #6b7280;
+        }
+
+        .sales-summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+
+        .sales-summary-table th,
+        .sales-summary-table td {
+            padding: 4px 0;
+        }
+
+        .sales-summary-table th {
+            font-weight: 800;
+            color: #6b7280;
+        }
+
+        .sales-day-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .sales-day-metrics {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .sales-day-chip {
+            border-radius: 999px;
+            padding: 6px 10px;
+            background: rgba(17, 24, 39, 0.03);
+            border: 1px solid var(--border);
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .sales-goal-current-low {
+            color: #b91c1c;
+        }
+
+        .sales-goal-current-mid {
+            color: #b45309;
+        }
+
+        .sales-goal-current-ok {
+            color: #16a34a;
+        }
+
         .table {
             width: 100%;
             border-collapse: collapse;
@@ -1048,8 +1158,9 @@
         .dash-grid {
             margin: 6px;
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 12px;
+            align-items: flex-start;
         }
 
         .dash-card {
@@ -1335,6 +1446,10 @@
                 <svg viewBox="0 0 24 24" fill="none"><path d="M5 5h14v4H5zM5 11h9v8H5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
                 Cierre
             </a>
+            <a class="tab" href="#admin">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M12 3a3 3 0 0 1 3 3v1h2a2 2 0 0 1 2 2v10H5V9a2 2 0 0 1 2-2h2V6a3 3 0 0 1 3-3Zm-1 4V6a1 1 0 1 1 2 0v1h-2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                Panel Admin
+            </a>
         </div>
     </div>
 </nav>
@@ -1465,6 +1580,86 @@
                 </div>
             @endif
 
+            @php(
+                $totalFacturas = (int) ($kpis['total_facturas'] ?? 0)
+            )
+            @php(
+                $ingresosTotales = (int) ($kpis['ingresos_totales'] ?? 0)
+            )
+            @php(
+                $ticketPromedio = $totalFacturas > 0 ? (int) floor($ingresosTotales / $totalFacturas) : 0
+            )
+
+            @php($ventasDateValue = $ventasDate ?? '')
+
+            <div class="sales-summary-card" style="margin: 6px; margin-bottom: 2px;">
+                <div class="sales-day-row">
+                    <div>
+                        <div class="sales-summary-label">Filtro por día</div>
+                        <input
+                            id="salesDateFilter"
+                            type="date"
+                            value="{{ $ventasDateValue }}"
+                            style="margin-top:6px; border:1px solid #e5e7eb; border-radius:8px; padding:6px 8px; font-size:12px; font-weight:700;"
+                        />
+                    </div>
+                    <div class="sales-day-metrics">
+                        @if($ventasDiaAgg)
+                            @php($goalDia = (int) ($ventasGoalDia ?? 0))
+                            @php($actualDia = (int) ($ventasDiaAgg['total'] ?? 0))
+                            @php($ratioDia = $goalDia > 0 ? ($actualDia / $goalDia) : 0)
+                            @php($goalClass = $ratioDia >= 1 ? 'sales-goal-current-ok' : ($ratioDia >= 0.7 ? 'sales-goal-current-mid' : 'sales-goal-current-low'))
+                            <div class="sales-day-chip">
+                                Vendido en el día:
+                                <strong>${{ number_format((int) $ventasDiaAgg['total'], 0, '.', ',') }}</strong>
+                            </div>
+                            <div class="sales-day-chip">
+                                Efectivo:
+                                <strong>${{ number_format((int) $ventasDiaAgg['efectivo'], 0, '.', ',') }}</strong>
+                            </div>
+                            <div class="sales-day-chip">
+                                Nequi:
+                                <strong>${{ number_format((int) $ventasDiaAgg['nequi'], 0, '.', ',') }}</strong>
+                            </div>
+                            <div class="sales-day-chip">
+                                Facturas del día:
+                                <strong>{{ number_format((int) $ventasDiaAgg['total_facturas'], 0, '.', ',') }}</strong>
+                            </div>
+                            <div class="sales-day-chip">
+                                Objetivo de venta:
+                                <strong>${{ number_format($goalDia, 0, '.', ',') }}</strong>
+                            </div>
+                            <div class="sales-day-chip {{ $goalClass }}">
+                                Objetivo actual:
+                                <strong>${{ number_format($actualDia, 0, '.', ',') }}</strong>
+                            </div>
+                        @else
+                            <div class="sales-day-chip">
+                                Selecciona un día para ver el detalle de ventas.
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+
+            <div class="sales-summary-grid">
+                <div class="sales-summary-card">
+                    <div class="sales-summary-label">Total facturas</div>
+                    <div class="sales-summary-value">{{ number_format($totalFacturas, 0, '.', ',') }}</div>
+                    <div class="sales-summary-sub">Histórico registrado en el sistema</div>
+                </div>
+                <div class="sales-summary-card">
+                    <div class="sales-summary-label">Ingresos totales</div>
+                    <div class="sales-summary-value">${{ number_format($ingresosTotales, 0, '.', ',') }}</div>
+                    <div class="sales-summary-sub">Suma de todas las ventas</div>
+                </div>
+                <div class="sales-summary-card">
+                    <div class="sales-summary-label">Ticket promedio</div>
+                    <div class="sales-summary-value">${{ number_format($ticketPromedio, 0, '.', ',') }}</div>
+                    <div class="sales-summary-sub">Ingresos totales / número de facturas</div>
+                </div>
+            </div>
+
             <div class="searchbar" role="search">
                 <span style="font-weight:900; color:#6b7280; font-size:12px;">🔎</span>
                 <input id="salesSearch" type="text" placeholder="Buscar venta..." aria-label="Buscar venta" />
@@ -1475,7 +1670,8 @@
                 <table class="table" aria-label="Ventas realizadas">
                     <thead>
                     <tr>
-                        <th style="width: 170px;">Venta</th>
+                        <th style="width: 130px;">Venta</th>
+                        <th style="width: 260px;">Productos</th>
                         <th>Fecha</th>
                         <th style="width: 120px;">Método</th>
                         <th style="width: 90px;">Items</th>
@@ -1498,8 +1694,30 @@
                                 'line_total' => (int) $it->line_total,
                             ];
                         }))
+                        @php($firstItem = $v->items->first())
+                        @php($firstProduct = $firstItem?->product)
+                        @php($firstImg = $firstProduct && $firstProduct->image ? asset('img/' . $firstProduct->image) : '')
+                        @php($productsCount = $v->items->count())
+                        @php($productsLabel = $firstProduct?->name
+                            ? ($productsCount > 1
+                                ? $firstProduct->name . ' +' . ($productsCount - 1) . ' más'
+                                : $firstProduct->name)
+                            : ($productsCount > 1 ? 'Varios productos' : 'Producto'))
                         <tr>
                             <td><strong>{{ $code }}</strong></td>
+                            <td>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    @if($firstImg)
+                                        <img src="{{ $firstImg }}" alt="Imagen de {{ $firstProduct->name ?? 'Producto' }}" style="width:40px; height:40px; border-radius:8px; object-fit:cover; border:1px solid #e5e7eb; background:#f3f4f6;">
+                                    @else
+                                        <div style="width:40px; height:40px; border-radius:8px; border:1px solid #e5e7eb; background:#f9fafb; display:flex; align-items:center; justify-content:center; font-size:11px; color:#9ca3af; font-weight:800;">No img</div>
+                                    @endif
+                                    <div>
+                                        <div style="font-size:12px; font-weight:900;">{{ $productsLabel }}</div>
+                                        <div style="font-size:11px; font-weight:800; color:#6b7280;">{{ $itemsCount }} items</div>
+                                    </div>
+                                </div>
+                            </td>
                             <td>{{ $v->created_at?->format('d/m/Y H:i') }}</td>
                             <td>
                                 <span class="pill {{ $v->payment_method === 'nequi' ? 'nequi' : '' }}">
@@ -1534,7 +1752,7 @@
             <h2 class="dash-title">Estadísticas</h2>
 
             <div class="dash-grid">
-                <div class="dash-card">
+                    <div class="dash-card">
                     <div class="dash-card-head" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
                         <span>Últimos 20 productos vendidos</span>
                         <div id="ultimosVendidosPagination" class="inventory-history-pagination" style="margin-top:0;"></div>
@@ -1543,10 +1761,10 @@
                         <table class="table dash-table" aria-label="Últimos productos vendidos">
                             <thead>
                             <tr>
-                                <th>Producto</th>
-                                <th style="width: 80px;">Cant.</th>
-                                <th style="width: 120px;">Total</th>
-                                <th style="width: 90px;">Hora</th>
+                                <th style="width: 45%;">Producto</th>
+                                <th style="width: 12%;">Cant.</th>
+                                <th style="width: 23%;">Total</th>
+                                <th style="width: 20%;">Hora</th>
                             </tr>
                             </thead>
                             <tbody id="ultimosVendidosTbody">
@@ -1601,6 +1819,44 @@
                         </table>
                     </div>
                 </div>
+
+                <div class="dash-card">
+                    <div class="dash-card-head">Productos más vendidos</div>
+                    <div class="table-wrap" style="margin:0; border:0; border-radius:0;">
+                        <table class="table dash-table" aria-label="Productos más vendidos">
+                            <thead>
+                            <tr>
+                                <th style="width:80px;">Imagen</th>
+                                <th>Producto</th>
+                                <th style="width:80px;">Cant.</th>
+                                <th style="width:120px;">Total</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @forelse($topVendidos as $row)
+                                @php($prod = $row->product)
+                                @php($imgUrl = $prod && $prod->image ? asset('img/' . $prod->image) : '')
+                                <tr>
+                                    <td>
+                                        @if($imgUrl)
+                                            <img src="{{ $imgUrl }}" alt="Imagen de {{ $prod->name ?? 'Producto' }}" style="width:48px; height:48px; object-fit:cover; border-radius:8px; border:1px solid #e5e7eb; background:#f3f4f6;">
+                                        @else
+                                            <span style="font-size:11px; color:#9ca3af; font-weight:800;">Sin imagen</span>
+                                        @endif
+                                    </td>
+                                    <td><strong>{{ $prod->name ?? 'Producto' }}</strong></td>
+                                    <td>{{ (int) $row->total_qty }}</td>
+                                    <td>${{ number_format((int) $row->total_amount, 0, '.', ',') }}</td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="4" style="color:#6b7280; font-weight:800;">Sin datos de ventas aún.</td>
+                                </tr>
+                            @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </section>
         <section id="cierre" class="panel full hash-section" hidden>
@@ -1648,6 +1904,50 @@
                         </tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </section>
+        <section id="admin" class="panel full hash-section" hidden>
+            <h2 class="dash-title">Panel Admin — Metas de ventas</h2>
+
+            @php($weekdayNames = [
+                1 => 'Lunes',
+                2 => 'Martes',
+                3 => 'Miércoles',
+                4 => 'Jueves',
+                5 => 'Viernes',
+                6 => 'Sábado',
+                7 => 'Domingo',
+            ])
+
+            <div class="dash-card" style="margin:6px;">
+                <div class="dash-card-head">Metas esperadas por día de la semana</div>
+                <div style="padding: 10px 12px;">
+                    <p style="font-size:12px; color:#4b5563; font-weight:800; margin-top:0; margin-bottom:10px;">
+                        Define aquí la venta esperada para cada día (valores en pesos). Estas metas se usarán en la vista de Ventas para el cálculo del objetivo actual según el día seleccionado.
+                    </p>
+                    <form method="POST" action="/admin/sales-goals">
+                        @csrf
+                        <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:14px;">
+                            @foreach($weekdayNames as $w => $label)
+                                @php($goalRow = ($weekdayGoals ?? collect())->get($w))
+                                @php($amount = (int) ($goalRow->amount ?? 0))
+                                <div class="sales-summary-card" style="margin:0;">
+                                    <div class="sales-summary-label">{{ $label }}</div>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        name="goals[{{ $w }}]"
+                                        value="{{ $amount }}"
+                                        style="margin-top:8px; width:100%; border:1px solid #e5e7eb; border-radius:9px; padding:8px 10px; font-size:14px; font-weight:700;"
+                                    />
+                                </div>
+                            @endforeach
+                        </div>
+                        <div style="margin-top:14px; display:flex; justify-content:flex-end;">
+                            <button type="submit" class="btn-primary">Guardar metas</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </section>
@@ -1832,10 +2132,11 @@
         ventas: document.getElementById('ventas'),
         estadisticas: document.getElementById('estadisticas'),
         cierre: document.getElementById('cierre'),
+        admin: document.getElementById('admin'),
     };
     function setActive() {
         const requested = window.location.hash || '#inicio';
-        const valid = ['#inicio', '#inventario', '#ventas', '#estadisticas', '#cierre'];
+        const valid = ['#inicio', '#inventario', '#ventas', '#estadisticas', '#cierre', '#admin'];
         const hash = valid.includes(requested) ? requested : '#inicio';
         tabs.forEach(t => t.classList.toggle('active', t.getAttribute('href') === hash));
 
@@ -1844,6 +2145,7 @@
         if (sections.ventas) sections.ventas.hidden = hash !== '#ventas';
         if (sections.estadisticas) sections.estadisticas.hidden = hash !== '#estadisticas';
         if (sections.cierre) sections.cierre.hidden = hash !== '#cierre';
+        if (sections.admin) sections.admin.hidden = hash !== '#admin';
     }
     window.addEventListener('hashchange', setActive);
     setActive();
@@ -2111,6 +2413,7 @@
     const ultimosVendidosPagination = document.getElementById('ultimosVendidosPagination');
 
     const cierreDateInput = document.getElementById('cierreDate');
+    const salesDateInput = document.getElementById('salesDateFilter');
     const cierreTotalMoneyEl = document.getElementById('cierreTotalMoney');
     const cierreTotalProductsEl = document.getElementById('cierreTotalProducts');
     const cierreItemsTbody = document.getElementById('cierreItemsTbody');
@@ -2951,6 +3254,22 @@
         cierreDateInput.addEventListener('change', () => {
             if (!cierreDateInput.value) return;
             loadCierreFor(cierreDateInput.value);
+        });
+    }
+
+    if (salesDateInput) {
+        salesDateInput.addEventListener('change', () => {
+            const value = salesDateInput.value;
+            const url = new URL(window.location.href);
+
+            if (value) {
+                url.searchParams.set('ventas_date', value);
+            } else {
+                url.searchParams.delete('ventas_date');
+            }
+
+            url.hash = '#ventas';
+            window.location.href = url.toString();
         });
     }
 
