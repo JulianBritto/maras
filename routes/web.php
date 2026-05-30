@@ -58,6 +58,29 @@ Route::middleware(RequireFilamentLogin::class)->get('/', function () {
         $ventasQuery->whereDate('created_at', $ventasDate);
     }
 
+    // Filtrar la vista de ventas para no mostrar demasiadas filas:
+    // Solo dejamos ventas que contengan alguno de los Top 5 productos más vendidos (por cantidad)
+    // dentro de la fecha seleccionada (o global si no hay fecha).
+    $topProductsLimit = 5;
+
+    $topProductIds = SaleItem::query()
+        ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+        ->selectRaw('sale_items.product_id, SUM(sale_items.quantity) as total_qty')
+        ->when(
+            $ventasDate,
+            fn ($q) => $q->whereDate('sales.created_at', $ventasDate)
+        )
+        ->groupBy('sale_items.product_id')
+        ->orderByDesc('total_qty')
+        ->limit($topProductsLimit)
+        ->pluck('sale_items.product_id');
+
+    if ($topProductIds->isNotEmpty()) {
+        $ventasQuery->whereHas('items', function ($q) use ($topProductIds) {
+            $q->whereIn('product_id', $topProductIds);
+        });
+    }
+
     $ventas = $ventasQuery
         ->take(100)
         ->get();
@@ -304,6 +327,30 @@ Route::middleware(RequireFilamentLogin::class)->post('/inventory/add-stock', fun
     }
 
     return redirect('/#inventario');
+});
+
+Route::middleware(RequireFilamentLogin::class)->post('/admin/products/update', function (Request $request) {
+    $data = $request->validate([
+        'product_id' => ['required', 'integer', 'exists:products,id'],
+        'name' => ['required', 'string', 'max:255'],
+        'price' => ['required', 'integer', 'min:0'],
+    ]);
+
+    $product = Product::query()->findOrFail((int) $data['product_id']);
+    $product->update([
+        'name' => $data['name'],
+        'price' => (int) $data['price'],
+    ]);
+
+    if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
+        return response()->json([
+            'id' => $product->id,
+            'name' => $product->name,
+            'price' => (int) $product->price,
+        ]);
+    }
+
+    return redirect('/#inventario')->with('sale_success', 'Producto actualizado satisfactoriamente.');
 });
 
 Route::middleware(RequireFilamentLogin::class)->get('/cierre-data', function (Request $request) {

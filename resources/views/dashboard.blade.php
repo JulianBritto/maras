@@ -381,6 +381,12 @@
             color: #111827;
         }
 
+        .product-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
         .product-add {
             width: 38px;
             height: 38px;
@@ -392,6 +398,27 @@
             font-size: 22px;
             line-height: 1;
             cursor: pointer;
+        }
+
+        .product-edit {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            border: 1px solid rgba(17,24,39,0.15);
+            background: rgba(17,24,39,0.04);
+            color: #111827;
+            font-weight: 900;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+        }
+
+        .product-edit:hover {
+            background: rgba(17,24,39,0.07);
         }
 
         .modal-backdrop {
@@ -421,6 +448,17 @@
         /* Modal de producto en inventario (más pequeño) */
         #productModal .modal {
             width: min(640px, 96vw);
+        }
+
+        /* Modal de edición de producto (mismo tamaño que el modal de producto) */
+        #editProductModal.modal {
+            width: min(640px, 96vw);
+        }
+
+        /* Centrar la imagen dentro del modal de edición */
+        #editProductModal .modal-img {
+            display: block;
+            margin: 0 auto;
         }
 
         /* Modal de Nueva Venta más grande */
@@ -1553,15 +1591,24 @@
 
                         <div class="product-footer">
                             <div class="product-price">${{ number_format((int) $p->price, 0, '.', ',') }}</div>
-                            <button
-                                class="product-add"
-                                type="button"
-                                aria-label="Agregar {{ $p->name }}"
-                                data-id="{{ (int) $p->id }}"
-                                data-name="{{ e($p->name) }}"
-                                data-price="{{ (int) $p->price }}"
-                                data-image="{{ $imgUrl }}"
-                            >+</button>
+                            <div class="product-actions">
+                                <button
+                                    class="product-edit"
+                                    type="button"
+                                    data-product-id="{{ (int) $p->id }}"
+                                    aria-label="Editar {{ e($p->name) }}"
+                                    title="Editar"
+                                >✎</button>
+                                <button
+                                    class="product-add"
+                                    type="button"
+                                    aria-label="Agregar {{ $p->name }}"
+                                    data-id="{{ (int) $p->id }}"
+                                    data-name="{{ e($p->name) }}"
+                                    data-price="{{ (int) $p->price }}"
+                                    data-image="{{ $imgUrl }}"
+                                >+</button>
+                            </div>
                         </div>
                     </article>
                 @endforeach
@@ -1991,7 +2038,7 @@
 
         <form id="saleForm" method="POST" action="/sales">
             @csrf
-            <div class="modal-body" style="align-items: stretch;">
+                <div class="modal-body" style="align-items: center;">
                 <div id="saleInlineError" class="alert" style="display:none;"></div>
                 <div style="font-weight:900; font-size:13px; padding: 0 2px; margin-bottom:8px;">Seleccionar Productos</div>
                 <div id="saleProductsGrid" class="sale-products-grid"></div>
@@ -2060,7 +2107,8 @@
         <div class="modal-body" style="align-items: stretch;">
             <div style="font-weight:900; font-size:13px; padding: 0 2px;">Productos vendidos</div>
             <div id="saleDetailItems" class="summary-list"></div>
-            <div style="margin-top:8px; font-size:13px; font-weight:800;">Método de pago: <span id="saleDetailPayment"></span></div>
+            <div id="saleDetailPagination" class="inventory-history-pagination" style="margin: 4px 0 0; display:none;"></div>
+            <div style="margin-top:8px; font-size:13px; font-weight:800;">MÃ©todo de pago: <span id="saleDetailPayment"></span></div>
             <div style="margin-top:4px; font-size:12px; font-weight:800; color:#4b5563;">Fecha y hora: <span id="saleDetailDateTime"></span></div>
         </div>
         <div class="modal-footer">
@@ -2549,14 +2597,27 @@
         document.body.style.overflow = '';
     };
 
-    const openSaleDetailModal = (sale) => {
-        if (!saleDetailBackdrop || !saleDetailItemsEl || !saleDetailTotalEl) return;
+    const SALE_DETAIL_PAGE_SIZE = 5;
+    let saleDetailPage = 1;
+    let saleDetailItemsData = [];
+
+    const renderSaleDetailItems = () => {
+        if (!saleDetailItemsEl) return;
+
+        const saleDetailPaginationEl = document.getElementById('saleDetailPagination');
+
+        const items = Array.isArray(saleDetailItemsData) ? saleDetailItemsData : [];
+        const totalPages = Math.max(1, Math.ceil(items.length / SALE_DETAIL_PAGE_SIZE));
+
+        if (saleDetailPage > totalPages) saleDetailPage = totalPages;
+        if (saleDetailPage < 1) saleDetailPage = 1;
 
         saleDetailItemsEl.innerHTML = '';
-        const items = Array.isArray(sale.items) ? sale.items : [];
-        let total = Number(sale.total || 0);
 
-        items.forEach(it => {
+        const start = (saleDetailPage - 1) * SALE_DETAIL_PAGE_SIZE;
+        const end = start + SALE_DETAIL_PAGE_SIZE;
+
+        items.slice(start, end).forEach(it => {
             const name = it.name || 'Producto';
             const img = it.image_url || '';
             const qty = Number(it.quantity || 0);
@@ -2569,12 +2630,45 @@
                 <img class="summary-img" src="${img}" alt="Imagen de ${name}">
                 <div class="summary-main">
                     <div class="summary-name">${name}</div>
-                    <div class="summary-meta">Cantidad: ${qty} • Valor unitario: $${fmt(unit)}</div>
+                    <div class="summary-meta">Cantidad: ${qty} â€¢ Valor unitario: $${fmt(unit)}</div>
                 </div>
                 <div class="summary-line">$${fmt(line)}</div>
             `;
             saleDetailItemsEl.appendChild(div);
         });
+
+        if (!saleDetailPaginationEl) return;
+
+        if (items.length <= SALE_DETAIL_PAGE_SIZE) {
+            saleDetailPaginationEl.innerHTML = '';
+            saleDetailPaginationEl.style.display = 'none';
+            return;
+        }
+
+        saleDetailPaginationEl.style.display = 'flex';
+        saleDetailPaginationEl.innerHTML = '';
+
+        for (let p = 1; p <= totalPages; p++) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = String(p);
+            btn.className = 'page-pill' + (p === saleDetailPage ? ' page-pill-active' : '');
+            btn.addEventListener('click', () => {
+                saleDetailPage = p;
+                renderSaleDetailItems();
+            });
+            saleDetailPaginationEl.appendChild(btn);
+        }
+    };
+
+    const openSaleDetailModal = (sale) => {
+        if (!saleDetailBackdrop || !saleDetailItemsEl || !saleDetailTotalEl) return;
+
+        const items = Array.isArray(sale.items) ? sale.items : [];
+        saleDetailItemsData = items;
+        saleDetailPage = 1;
+
+        let total = Number(sale.total || 0);
 
         saleDetailTotalEl.textContent = '$' + fmt(total);
 
@@ -2590,6 +2684,8 @@
         if (saleDetailDateTimeEl) {
             saleDetailDateTimeEl.textContent = sale.datetime || '';
         }
+
+        renderSaleDetailItems();
 
         saleDetailBackdrop.classList.add('open');
         saleDetailBackdrop.setAttribute('aria-hidden', 'false');
@@ -2697,18 +2793,24 @@
         }
     }
 
-    const SALES_PAGE_SIZE = 8;
+    const SALES_PAGE_SIZE = 5;
     let salesPage = 1;
 
+    let salesRowsCache = null;
     const getSalesRows = () => {
         if (!salesTbody) return [];
-        return Array.from(salesTbody.querySelectorAll('tr')).filter(tr => !tr.dataset.empty && tr.dataset.noresults !== '1');
+        if (salesRowsCache) return salesRowsCache;
+
+        salesRowsCache = Array.from(salesTbody.querySelectorAll('tr'))
+            .filter(tr => !tr.dataset.empty);
+        return salesRowsCache;
     };
 
     function updateSalesPagination(resetPage = false) {
         if (!salesTbody) return;
 
-        const rows = getSalesRows().filter(tr => tr.dataset.visible !== '0');
+        const allRows = getSalesRows();
+        const rows = allRows.filter(tr => tr.dataset.noresults !== '1' && tr.dataset.visible !== '0');
 
         if (!rows.length) {
             // No filas visibles (quizá por búsqueda); mostramos todas ocultas y dejamos mensaje aparte
@@ -3371,6 +3473,196 @@
     } catch (e) {
         console.error('Error inicializando estadísticas diarias', e);
     }
+(() => {
+    // =========================
+    // Modal de edición en vista (sin redirección)
+    // =========================
+    const csrfToken = '{{ csrf_token() }}';
+    const editEndpoint = '/admin/products/update';
+
+    const modalId = 'editProductModal';
+    const backdropId = 'editProductModalBackdrop';
+
+    function ensureEditModal() {
+        if (document.getElementById(modalId)) return;
+
+        const backdrop = document.createElement('div');
+        backdrop.id = backdropId;
+        backdrop.className = 'modal-backdrop';
+        backdrop.setAttribute('role', 'dialog');
+        backdrop.setAttribute('aria-modal', 'true');
+
+        const modal = document.createElement('div');
+        modal.id = modalId;
+        modal.className = 'modal';
+        modal.setAttribute('role', 'document');
+
+        modal.innerHTML = `
+            <div class="modal-head">
+                <p class="modal-title">Producto</p>
+                <button id="editProductModalClose" class="modal-close" type="button" aria-label="Cerrar">×</button>
+            </div>
+            <div class="modal-body" style="align-items: stretch;">
+                <input type="hidden" id="editProductId" />
+                <img id="editProductModalImg" class="modal-img" src="" alt="Imagen del producto" style="max-height:190px;" />
+
+                <div class="modal-stack">
+                    <p id="editProductModalName" class="modal-name"></p>
+                    <div id="editProductModalValue" class="modal-price"></div>
+                </div>
+
+                <div class="form-row" style="grid-template-columns: 1fr;">
+                    <div style="display:flex; flex-direction:column; gap:6px;">
+                        <label style="font-weight:900; font-size:12px;">Nombre</label>
+                        <input id="editProductName" type="text" required style="margin:0;" />
+                    </div>
+                </div>
+
+                <div class="form-row" style="grid-template-columns: 1fr;">
+                    <div style="display:flex; flex-direction:column; gap:6px;">
+                        <label style="font-weight:900; font-size:12px;">Precio</label>
+                        <input id="editProductPrice" type="number" min="0" step="1" required style="margin:0;" />
+                    </div>
+                </div>
+
+                <div class="modal-footer" style="justify-content:flex-end;">
+                    <button id="editProductCancel" class="btn-secondary" type="button" style="padding:10px 14px;">Cancelar</button>
+                    <button id="editProductSave" class="btn-primary" type="button" style="padding:10px 14px;">Guardar</button>
+                </div>
+            </div>
+        `;
+
+        backdrop.appendChild(modal);
+        document.body.appendChild(backdrop);
+
+        const closeBtn = modal.querySelector('#editProductModalClose');
+        const cancelBtn = modal.querySelector('#editProductCancel');
+        closeBtn?.addEventListener('click', closeEditModal);
+        cancelBtn?.addEventListener('click', closeEditModal);
+
+        // Click fuera del modal
+        backdrop.addEventListener('click', (e) => {
+            if (e.target === backdrop) closeEditModal();
+        });
+
+        function closeEditModal() {
+            backdrop.classList.remove('open');
+            backdrop.setAttribute('aria-hidden', 'true');
+        }
+
+        // Exponer para usar en openEditModal
+        window.__closeEditProductModal = closeEditModal;
+    }
+
+    function openEditModal({ id, name, price, image }) {
+        ensureEditModal();
+        const backdrop = document.getElementById(backdropId);
+        const modal = document.getElementById(modalId);
+
+        const idInput = document.getElementById('editProductId');
+        const nameInput = document.getElementById('editProductName');
+        const priceInput = document.getElementById('editProductPrice');
+        const saveBtn = document.getElementById('editProductSave');
+
+        const imgEl = document.getElementById('editProductModalImg');
+        const modalNameEl = document.getElementById('editProductModalName');
+        const modalValueEl = document.getElementById('editProductModalValue');
+
+        const numericPrice = Number(price ?? 0);
+        const fmt = (v) => Number(v).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+
+        idInput.value = String(id);
+        nameInput.value = name ?? '';
+        priceInput.value = String(numericPrice);
+
+        if (imgEl) imgEl.src = image ?? '';
+        if (modalNameEl) modalNameEl.textContent = name ?? '';
+        if (modalValueEl) modalValueEl.textContent = 'Valor: $' + fmt(numericPrice);
+
+        // Guardar
+        saveBtn.onclick = async () => {
+            const productId = idInput.value;
+            const newName = nameInput.value;
+            const newPrice = Number(priceInput.value);
+
+            if (!newName || !Number.isFinite(newPrice)) {
+                alert('Datos inválidos.');
+                return;
+            }
+
+            try {
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Guardando...';
+
+                const formData = new FormData();
+                formData.append('product_id', productId);
+                formData.append('name', newName);
+                formData.append('price', String(Math.trunc(newPrice)));
+
+                const resp = await fetch(editEndpoint, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    },
+                    body: formData
+                });
+
+                if (!resp.ok) {
+                    throw new Error('Error al actualizar el producto');
+                }
+
+                const data = await resp.json();
+
+                // Actualizar UI en el card actual
+                const triggerBtn = document.querySelector(`.product-edit[data-product-id="${productId}"]`);
+                const card = triggerBtn?.closest('article.product');
+                if (card) {
+                    const nameEl = card.querySelector('.product-name');
+                    const priceEl = card.querySelector('.product-price');
+
+                    if (nameEl) nameEl.textContent = data.name;
+                    if (priceEl) {
+                        const formatted = Number(data.price).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+                        priceEl.textContent = '$' + formatted;
+                    }
+                }
+
+                // Cerrar modal
+                window.__closeEditProductModal?.();
+
+            } catch (e) {
+                console.error(e);
+                alert('No se pudo actualizar el producto.');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Guardar';
+            }
+        };
+
+        backdrop.classList.add('open');
+        backdrop.setAttribute('aria-hidden', 'false');
+    }
+
+    // Delegación de eventos por si hay re-render
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.product-edit');
+        if (!btn) return;
+
+        const productId = btn.getAttribute('data-product-id');
+        if (!productId) return;
+
+        const card = btn.closest('article.product');
+        const name = card?.querySelector('.product-name')?.textContent?.trim() ?? '';
+        const priceText = card?.querySelector('.product-price')?.textContent?.trim() ?? '';
+        const numericPrice = Number(String(priceText).replace(/[^0-9]/g, ''));
+
+        const imgSrc = card?.querySelector('img')?.getAttribute('src') ?? '';
+
+        openEditModal({ id: productId, name, price: numericPrice, image: imgSrc });
+    });
+})();
 </script>
 </body>
 </html>
